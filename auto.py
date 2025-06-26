@@ -3,14 +3,14 @@ import random
 import string
 import time
 import platform
-import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
 # Генерация случайных данных пользователя
 def generate_user_data():
@@ -35,11 +35,11 @@ def generate_user_data():
         "birth_day": birth_day
     }
 
-# Инициализация драйвера Chrome
+# Инициализация драйвера Chrome с автоматической установкой
 def init_driver():
     chrome_options = Options()
     
-    # Настройки для Linux/Windows
+    # Настройки для Linux
     if platform.system() == "Linux":
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -50,24 +50,27 @@ def init_driver():
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--window-size=1280,720")
     chrome_options.add_argument("--log-level=3")
+    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    # Настройки для обхода детекта
-    chrome_options.add_argument(f"user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(90,110)}.0.0.0 Safari/537.36")
+    # Случайный User-Agent
+    chrome_version = f"{random.randint(100, 115)}.0.{random.randint(1000, 6000)}"
+    user_agent = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36"
+    chrome_options.add_argument(f"user-agent={user_agent}")
     
-    # Определение пути к драйверу
-    driver_path = "./chromedriver"
-    if platform.system() == "Windows":
-        driver_path = "./chromedriver.exe"
-    
-    service = Service(executable_path=driver_path)
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    # Эмуляция человеческого поведения
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
-    return driver
+    try:
+        # Автоматическая установка драйвера
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # Эмуляция человеческого поведения
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        return driver
+        
+    except Exception as e:
+        print(f"Ошибка инициализации драйвера: {str(e)}")
+        return None
 
 # Процесс создания аккаунта
 def create_account(driver, user_data):
@@ -75,26 +78,26 @@ def create_account(driver, user_data):
         driver.get("https://accounts.google.com/signup")
         
         # Шаг 1: Основная информация
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "firstName"))).send_keys(user_data["first_name"])
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "firstName"))).send_keys(user_data["first_name"])
         driver.find_element(By.ID, "lastName").send_keys(user_data["last_name"])
         driver.find_element(By.ID, "username").send_keys(user_data["username"])
         driver.find_element(By.NAME, "Passwd").send_keys(user_data["password"])
         driver.find_element(By.NAME, "ConfirmPasswd").send_keys(user_data["password"])
         
-        # Человеческая задержка перед кликом
-        time.sleep(random.uniform(0.5, 1.5))
+        # Человеческая задержка
+        time.sleep(random.uniform(0.8, 1.8))
         driver.find_element(By.ID, "accountDetailsNext").click()
         
         # Шаг 2: Пропуск телефона
-        WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(text(),'Пропустить') or contains(text(),'Skip')]"))).click()
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[contains(text(), 'Пропустить') or contains(text(), 'Skip')]]"))).click()
         
         # Шаг 3: Резервная почта
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "recoveryEmailId"))).send_keys(user_data["recovery_email"])
-        time.sleep(random.uniform(0.3, 0.8))
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "recoveryEmailId"))).send_keys(user_data["recovery_email"])
+        time.sleep(random.uniform(0.5, 1.2))
         driver.find_element(By.ID, "recoveryEmailNext").click()
         
         # Шаг 4: Дата рождения
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "day"))).send_keys(str(user_data["birth_day"]))
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "day"))).send_keys(str(user_data["birth_day"]))
         driver.find_element(By.ID, "year").send_keys(str(user_data["birth_year"]))
         
         # Выбор месяца
@@ -109,21 +112,23 @@ def create_account(driver, user_data):
         if len(genders) > 1:
             random.choice(genders[1:]).click()
         
-        time.sleep(random.uniform(0.5, 1.2))
+        time.sleep(random.uniform(0.8, 1.5))
         driver.find_element(By.ID, "personalDetailsNext").click()
         
         # Шаг 5: Пропуск верификации
-        WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(text(),'Пропустить') or contains(text(),'Skip')]"))).click()
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[contains(text(), 'Пропустить') or contains(text(), 'Skip')]]"))).click()
         
         # Шаг 6: Принятие условий
-        WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[@id='termsofserviceNext']"))).click()
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[contains(text(), 'Принимаю') or contains(text(), 'I agree')]]"))).click()
         
         # Проверка успешности
-        WebDriverWait(driver, 15).until(EC.url_contains("myaccount.google.com"))
+        WebDriverWait(driver, 20).until(EC.url_contains("myaccount.google.com"))
         return True
         
-    except (TimeoutException, NoSuchElementException) as e:
-        print(f"Ошибка на шаге: {str(e)}")
+    except (TimeoutException, NoSuchElementException, WebDriverException) as e:
+        print(f"Ошибка при создании аккаунта: {str(e)}")
+        # Сохраняем скриншот при ошибке
+        driver.save_screenshot(f"error_{int(time.time())}.png")
         return False
 
 # Главная функция
@@ -134,13 +139,17 @@ def main():
     # Создаем папку для результатов
     os.makedirs("accounts", exist_ok=True)
     
-    try:
-        driver = init_driver()
-        accounts_to_create = 5  # Начните с малого количества для теста
-        success_count = 0
+    driver = init_driver()
+    if not driver:
+        print("Не удалось инициализировать драйвер. Убедитесь что Chrome установлен.")
+        return
         
+    accounts_to_create = 3  # Начните с малого количества для теста
+    success_count = 0
+    
+    try:
         for i in range(accounts_to_create):
-            print(f"\nСоздание аккаунта #{i+1}/{accounts_to_create}")
+            print(f"\n[Попытка {i+1}/{accounts_to_create}] Создание аккаунта...")
             user_data = generate_user_data()
             
             if create_account(driver, user_data):
@@ -152,21 +161,23 @@ def main():
                     f.write(f"Recovery Email: {user_data['recovery_email']}\n")
                     f.write(f"Name: {user_data['first_name']} {user_data['last_name']}\n")
                 
-                print(f"УСПЕХ! Аккаунт создан: {user_data['username']}@gmail.com")
+                print(f"[УСПЕХ] Аккаунт создан: {user_data['username']}@gmail.com")
             else:
-                print("Не удалось создать аккаунт")
+                print("[ОШИБКА] Не удалось создать аккаунт")
             
             # Очистка куки и кэша
             driver.delete_all_cookies()
-            time.sleep(random.uniform(10, 20))  # Длительная пауза
+            # Длительная пауза между попытками
+            wait_time = random.randint(20, 40)
+            print(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+            time.sleep(wait_time)
             
-        print(f"\nИтог: Успешно создано {success_count}/{accounts_to_create} аккаунтов")
+        print(f"\n[РЕЗУЛЬТАТ] Успешно создано {success_count}/{accounts_to_create} аккаунтов")
         
     except Exception as e:
-        print(f"Критическая ошибка: {str(e)}")
+        print(f"[КРИТИЧЕСКАЯ ОШИБКА] {str(e)}")
     finally:
-        if 'driver' in locals():
-            driver.quit()
+        driver.quit()
         print("Процесс завершен")
 
 if __name__ == "__main__":
